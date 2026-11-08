@@ -1,0 +1,135 @@
+FAZ TRADING COMMUNITY — OFFLINE PINE SCRIPT LIBRARY
+=================================================
+
+QUICK START (Windows 10 / 11)
+1. Right-click the downloaded ZIP and choose Extract All.
+2. Open the extracted FAZ-Trading-Community folder.
+3. Double-click START-FAZ.cmd. Keep its window open while using the library.
+4. Microsoft Edge opens automatically when found. Otherwise copy the localhost
+   address printed in the launcher into Microsoft Edge or Google Chrome.
+5. Click Connect folder. Choose an empty folder on your laptop, for example
+   C:\Users\YourName\Documents\FAZ Library. Allow viewing and saving files.
+6. Click New indicator. Give it a name, description and tags.
+7. Open the indicator, click Add version, name the version, and select a .pine
+   file or paste your Pine source. Attach chart screenshots and click Save.
+
+No installation, Python, Node, internet connection, account or cloud is needed.
+The first run starts with a clean library: your original indicator scripts and
+screenshots were not attached, so no trading scripts are invented or included.
+
+اردو — شروع کرنے کا طریقہ
+-------------------------
+ZIP پر right-click کر کے Extract All کریں۔ پھر START-FAZ.cmd کھولیں۔
+Edge یا Chrome میں Connect folder دبائیں اور اپنے laptop کا folder منتخب کریں۔
+New indicator بنائیں، پھر Add version میں Pine file اور screenshots شامل کریں۔
+دوبارہ استعمال کرتے وقت اسی folder کو connect کریں؛ محفوظ data واپس آ جائے گا۔
+Launcher کی window کام مکمل ہونے تک کھلی رکھیں۔
+
+BROWSER COMPATIBILITY
+---------------------
+Use a current Windows desktop Microsoft Edge or Google Chrome with the File
+System Access API enabled. This application uses showDirectoryPicker and
+createWritable. Firefox, Safari, mobile browsers and embedded browser previews
+are not supported for saving. Use the localhost URL from the launcher.
+Do not launch index.html directly; use START-FAZ.cmd for the supported workflow.
+Managed work/school browsers may disable folder access. If so, use a permitted
+personal Edge/Chrome profile or contact your administrator.
+Folder access is explicitly granted by you. The application may ask you to allow
+access again on later visits; click Reconnect last folder, or select the SAME
+folder to load existing data. Only a folder handle is remembered in the browser.
+
+HOW SAVING WORKS
+----------------
+Create indicator, Save version, Archive and Restore write directly to disk.
+Unsubmitted form text is not saved. Wait for the saved message before closing.
+Every version is a separate immutable entry. To change a script or add more
+screenshots, create a new version. Version labels must be unique per indicator.
+The Pine file is stored byte-for-byte when uploaded; pasted text is saved as UTF-8.
+Supported screenshots: PNG, JPG, WEBP; max 12 per version, 20 MB each.
+Pine source limit: 5 MB per version.
+
+Folder structure:
+  Your selected folder\
+    library.json                 Project and version catalogue
+    library.backup.json          Previous catalogue, after the next save
+    projects\
+      <project-id>\
+        <version-id>\
+          source.pine
+          image-1.png            (or .jpg / .webp)
+          image-2.jpg
+
+Project and version folder names are stable IDs, so names in any language are
+safe. Display names, tags, release notes and original image names are stored in
+library.json. Do not rename or move these internal files while using the app.
+Screenshots are viewed in a gallery; click any image for the full-size view.
+Copy code copies source to the clipboard. Download .pine saves another copy
+through your browser's usual download settings; it does not move the original.
+Archive hides a project without deleting its files. Archived projects can be
+restored from the sidebar. There is intentionally no permanent-delete button.
+
+LOCAL-ONLY STORAGE AND BACKUPS
+-----------------------------
+Choose a folder outside OneDrive, Dropbox, Google Drive or another synced
+location if you want storage to remain solely on the laptop. The app itself has
+no data uploads, analytics, external fonts, CDN libraries or cloud services.
+The launcher listens only on this laptop's IPv4 loopback interface and serves
+only the application files. It never serves your selected library folder.
+The data is ordinary local files, not encrypted by this application.
+
+For a complete backup, close the app and copy the ENTIRE selected library folder
+to a USB drive or another disk. To restore, copy it back and connect that folder.
+library.backup.json contains only the previous catalogue, not a full file backup.
+If library.json is damaged, first copy the full library folder elsewhere. Then
+rename the damaged library.json and COPY library.backup.json to library.json.
+Reconnect. Changes from the most recent successful save may not be in the backup.
+The app refuses malformed manifests and does not silently replace them.
+An interrupted save can leave unused asset files, but existing versions remain.
+
+ONE WRITER AT A TIME
+-------------------
+Use one browser tab with this library. A stale-folder check detects many external
+edits and asks you to reconnect, but simultaneous writes from two tabs/windows
+are not supported. Do not edit library.json while the app is open.
+
+TROUBLESHOOTING
+---------------
+- No browser opens: copy the printed http://localhost:PORT/ URL into Edge/Chrome.
+- Page stops working: reopen START-FAZ.cmd and use its displayed URL.
+- Port busy: launcher automatically tries the next available port, up to 20.
+- Permission denied: reconnect the folder and approve read/write access. Avoid
+  protected Windows directories, the root of a drive, and read-only media.
+- Empty library after reopening: verify that you connected the original folder.
+- Save fails: check disk space and folder access, then retry. The form stays open.
+- Source/image missing: restore the missing file from a full folder backup.
+- Script blocked by organizational policy: contact your administrator. The
+  launcher uses a process-scoped execution-policy option; it does not modify
+  the machine's saved policy. This package contains readable source code.
+- Windows shows a download warning: inspect the included readable files before
+  deciding whether to run them. Do not disable antivirus or device protections.
+
+WHAT IS INCLUDED
+----------------
+START-FAZ.cmd       Double-click Windows launcher
+Start-FAZ.ps1       Built-in PowerShell static localhost server
+dist/index.html    Website layout
+dist/style.css     Charcoal and gold laptop-first design
+dist/storage.js    Local folder persistence and catalogue validation
+dist/app.js        Library interface and interactions
+dist/sw.js         Offline application cache
+READ-ME-FIRST.txt  These instructions
+
+This is a source library, not a Pine compiler, charting engine or trading signal
+service. It stores your code; running it requires your Pine-compatible editor.
+
+NEW IN 1.1
+----------
+Favorite frequently used indicators; find them in Favorites.
+Edit indicator names, descriptions and tags without changing saved versions.
+Reconnect the last folder with one click (browser permissions still apply).
+Application files are cached for offline reopening after a successful first load.
+The local launcher remains the reliable offline way to open the application.
+On GitHub Pages, the first visit needs internet. Offline availability depends on
+the browser keeping its cache. Clearing browser data removes that cache and the
+remembered folder handle, but does not delete your actual library files.
+GitHub receives application code only, never your selected library folder.
