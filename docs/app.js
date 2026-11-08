@@ -1,30 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let store = null, activeProject = null, activeVersion = null, archived = false, busy = false, generation = 0;
-let imageURLs = [], toastTimer, editingProject = null, rememberedFolder = null, favoritesOnly = false;
-
-// Only the folder handle is remembered in this browser. Library data stays on disk.
-function folderMemory(value) {
-  return new Promise((resolve,reject)=>{
-    const request=indexedDB.open('faz-preferences',1);
-    request.onupgradeneeded=()=>request.result.createObjectStore('settings');
-    request.onerror=()=>reject(request.error);
-    request.onsuccess=()=>{
-      const db=request.result,writing=value!==undefined;
-      const tx=db.transaction('settings',writing?'readwrite':'readonly');
-      const op=writing?tx.objectStore('settings').put(value,'folder'):tx.objectStore('settings').get('folder');
-      tx.oncomplete=()=>{db.close();resolve(writing?value:op.result);};
-      tx.onerror=()=>{db.close();reject(tx.error);};
-    };
-  });
-}
-async function openFolder(root){
-  const candidate=new LibraryStore(root); await candidate.open();
-  store=candidate;activeProject=null;activeVersion=null;rememberedFolder=root;
-  try{await folderMemory(root);}catch{} // Storage restrictions never block saving.
-  $('reconnect').hidden=false;updateStatus();render();
-  toast('Connected to '+root.name+'. '+projects().length+' indicators loaded.');
-}
+let imageURLs = [], toastTimer, editingProject = null, favoritesOnly = false;
 
 const esc = value => String(value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date = value => new Date(value).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -32,15 +9,16 @@ const id = () => crypto.randomUUID();
 const projects = () => store?.data.projects || [];
 const current = () => projects().find(p => p.id === activeProject);
 function toast(message,error=false) { clearTimeout(toastTimer); $('toast').textContent=message; $('toast').className=error?'error':''; $('toast').style.display='block'; toastTimer=setTimeout(()=>$('toast').style.display='none',error?10000:4500); }
-function showError(e) { console.error(e); if(e.name==='AbortError')return; toast(e.name==='NotAllowedError'?'Folder permission was not granted. Reconnect and allow saving.':e.message || 'Something went wrong. Please try again.',true); }
+function showError(e) { if(e.name==='AbortError')return; toast(e.message || 'Something went wrong. Please try again.',true); }
 async function action(fn) { if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){showError(e);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);} }
-function updateStatus() { $('saveState').textContent=store?'● Saved on this laptop':'○ Not connected';$('saveState').className='status'+(store?' connected':'');$('folderName').textContent=store?.root.name||'No folder connected';$('connect').textContent=store?'Switch / reconnect':'Connect folder'; }
-async function connect() {
-  if(!window.showDirectoryPicker){$('helpDialog').showModal();return;}
-  await action(async()=>{
-    const root=await window.showDirectoryPicker({id:'faz-library',mode:'readwrite'});
-    await openFolder(root);
-  });
+function updateStatus(){
+  $('saveState').textContent=store?'● Connected to GitHub':'○ Connect to load library';$('saveState').className='status'+(store?' connected':'');
+  $('folderName').textContent=store?'Private GitHub repository':'Not connected';$('connect').textContent=store?'Disconnect':'Connect GitHub';
+  $('reconnect').hidden=!store;
+}
+function connect(){
+  if(store){store.token='';store=null;activeProject=null;activeVersion=null;clearImages();generation++;updateStatus();render();toast('Disconnected. Your library stays on GitHub.');return;}
+  $('githubKey').value='';$('authDialog').showModal();
 }
 function render() {
   const all=projects(), visible=all.filter(p=>!p.archived);
@@ -58,10 +36,10 @@ function render() {
   $('projects').innerHTML=list.map(p=>`<button class="project-card" data-project="${esc(p.id)}"><div class="card-top"><span class="code-icon">&lt;/&gt;</span><span class="badge">${esc(p.versions.at(-1)?.stage||'New project')}</span></div><h3>${p.favorite?'★ ':''}${esc(p.name)}</h3><p>${esc(p.description||'Your next trading idea starts here.')}</p><div class="tags">${p.tags.slice(0,4).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div><div class="card-footer"><span>${p.versions.length} version${p.versions.length===1?'':'s'}</span><span>${date(p.updated)} ↗</span></div></button>`).join('');
   $('empty').hidden=!!list.length;
   $('empty').querySelector('h2').textContent=q?'No matching indicators.':favoritesOnly?'Keep your go-to indicators close.':archived?'Your archive is clear.':store?'Make room for your first indicator.':'A clean start for your next idea.';
-  $('empty').querySelector('p').innerHTML=q?'Try another name, tag or description.':favoritesOnly?'Open an indicator and click Favorite to add it here.':archived?'Archived indicators stay in your folder.<br>You can restore them here anytime.':store?'Create an indicator, then add its first version.<br>Source code and screenshots stay together.':'Connect a local folder, then add your first indicator.<br>Keep every revision and its chart screenshots together.';
-  $('emptyAction').hidden=archived||favoritesOnly||!!q;$('emptyAction').textContent=store?'＋ New indicator':'Choose library folder ↗';
+  $('empty').querySelector('p').innerHTML=q?'Try another name, tag or description.':favoritesOnly?'Open an indicator and click Favorite to add it here.':archived?'Archived indicators stay in your private GitHub repository.<br>You can restore them here anytime.':store?'Create an indicator, then add its first version.<br>Source code and screenshots stay together.':'Connect your GitHub library, then add your first indicator.<br>Keep every revision and its chart screenshots together.';
+  $('emptyAction').hidden=archived||favoritesOnly||!!q;$('emptyAction').textContent=store?'＋ New indicator':'Connect GitHub ↗';
 }
-function newProject(){if(!store){toast('Connect a local library folder first.');return connect();}editingProject=null;$('projectForm').reset();$('projectFormTitle').textContent='New indicator';$('projectSubmit').textContent='Create indicator';$('projectDialog').showModal();}
+function newProject(){if(!store){toast('Connect GitHub first.');return connect();}editingProject=null;$('projectForm').reset();$('projectFormTitle').textContent='New indicator';$('projectSubmit').textContent='Create indicator';$('projectDialog').showModal();}
 function clearImages(){for(const url of imageURLs)URL.revokeObjectURL(url);imageURLs=[];}
 async function showProject(projectId){activeProject=projectId;activeVersion=current()?.versions.at(-1)?.id; if(!$('detailDialog').open)$('detailDialog').showModal();await renderDetail();}
 async function renderDetail(){
@@ -81,7 +59,7 @@ async function renderDetail(){
     $('copySource').disabled=false;$('downloadSource').disabled=false;
     $('copySource').onclick=async()=>{try{await navigator.clipboard.writeText(source);toast('Pine source copied.');}catch{toast('Clipboard access failed. Download the .pine file instead.',true);}};
     $('downloadSource').onclick=()=>{const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=`${p.name}-${v.label}.pine`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_');a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);};
-  }catch(e){if(run===generation)$('sourceCode').textContent='Source could not be read. Check that source.pine still exists in your library folder. '+e.message;}
+  }catch(e){if(run===generation)$('sourceCode').textContent='Source could not be read. Check that source.pine still exists in your GitHub library. '+e.message;}
   for(const img of v.images){
     try{const file=await store.file(img.path);if(run!==generation)return;const url=URL.createObjectURL(file);imageURLs.push(url);const b=document.createElement('button'),im=document.createElement('img');im.src=url;im.alt=img.name;b.title=img.name;b.append(im);b.onclick=()=>{$('largeImage').src=url;$('largeImage').alt=img.name;$('imageDialog').showModal();};$('gallery').append(b);}catch(e){if(run!==generation)return;const message=document.createElement('p');message.className='muted';message.textContent=`Missing screenshot: ${img.name}`;$('gallery').append(message);}
   }
@@ -111,11 +89,11 @@ $('versionForm').onsubmit=e=>{e.preventDefault();action(async()=>{
   const v={id:vid,label,stage:f.get('stage'),notes:f.get('notes').trim(),created:now,source:base+'source.pine',images:shots.map((s,i)=>({name:s.name,path:base+`image-${i+1}.${extensions[s.type]}`}))};
   const assets=[{path:v.source,content:pine||text},...shots.map((s,i)=>({path:v.images[i].path,content:s}))];
   const next=structuredClone(store.data),target=next.projects.find(x=>x.id===p.id);target.versions.push(v);target.updated=now;
-  $('saveState').textContent='◌ Saving to folder…';
+  $('saveState').textContent='◌ Saving to GitHub…';
   try{await store.commit(next,assets);}finally{updateStatus();}
-  activeVersion=vid;$('versionDialog').close();render();await renderDetail();toast('Version and screenshots saved to your folder.');
+  activeVersion=vid;$('versionDialog').close();render();await renderDetail();toast('Version and screenshots saved to your private GitHub repository.');
 });};
-$('archiveProject').onclick=()=>action(async()=>{const next=structuredClone(store.data),p=next.projects.find(p=>p.id===activeProject);p.archived=!p.archived;p.updated=new Date().toISOString();await store.commit(next);$('detailDialog').close();render();toast(p.archived?'Project archived. Files remain in your folder.':'Project restored.');});
+$('archiveProject').onclick=()=>action(async()=>{const next=structuredClone(store.data),p=next.projects.find(p=>p.id===activeProject);p.archived=!p.archived;p.updated=new Date().toISOString();await store.commit(next);$('detailDialog').close();render();toast(p.archived?'Project archived. Files remain in your private GitHub repository.':'Project restored.');});
 document.addEventListener('click',e=>{const close=e.target.closest('[data-close]');if(close&&!busy)$(close.dataset.close).close();const card=e.target.closest('[data-project]');if(card&&!busy)showProject(card.dataset.project).catch(showError);const version=e.target.closest('[data-version]');if(version&&!busy){activeVersion=version.dataset.version;renderDetail().catch(showError);}});
 document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',e=>{if(busy)e.preventDefault();}));
 $('detailDialog').addEventListener('close',()=>{generation++;clearImages();});
@@ -124,7 +102,6 @@ $('help').onclick=()=>$('helpDialog').showModal();$('search').oninput=render;$('
 $('libraryNav').onclick=()=>{archived=false;favoritesOnly=false;render();};$('archiveNav').onclick=()=>{archived=true;favoritesOnly=false;render();};
 $('favoritesNav').onclick=()=>{archived=false;favoritesOnly=true;render();};
 window.addEventListener('beforeunload',e=>{if(busy||$('versionDialog').open||$('projectDialog').open){e.preventDefault();e.returnValue='';}});
-if(!window.showDirectoryPicker||!window.isSecureContext){$('compat').hidden=false;$('compat').textContent='Folder saving requires desktop Microsoft Edge or Google Chrome. Open this app through START-FAZ.cmd at localhost. Firefox and Safari are not supported.';}
 render();
 
 $('editProject').onclick=()=>{
@@ -136,13 +113,13 @@ $('favoriteProject').onclick=()=>action(async()=>{
   const next=structuredClone(store.data),p=next.projects.find(p=>p.id===activeProject);p.favorite=!p.favorite;
   await store.commit(next);render();await renderDetail();toast(p.favorite?'Added to favorites.':'Removed from favorites.');
 });
-$('reconnect').onclick=()=>action(async()=>{
-  if(!rememberedFolder)throw Error('Choose your library folder using Connect folder.');
-  if(await rememberedFolder.requestPermission({mode:'readwrite'})!=='granted')throw Error('Allow folder access, or choose it again with Connect folder.');
-  await openFolder(rememberedFolder);
-});
-folderMemory().then(handle=>{if(handle&&!store){rememberedFolder=handle;$('reconnect').hidden=false;$('reconnect').title='Reconnect '+handle.name;}}).catch(()=>{});
-// Cache application files only. The service worker never sees local library files.
-if('serviceWorker' in navigator && window.isSecureContext){
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
-}
+
+$('reconnect').onclick=()=>action(async()=>{await store.open();updateStatus();render();toast('Latest GitHub library loaded.');});
+$('authForm').onsubmit=e=>{e.preventDefault();action(async()=>{
+  const key=$('githubKey').value.trim();if(!key)throw Error('Paste your GitHub access key.');
+  const candidate=new LibraryStore(key);await candidate.open();store=candidate;
+  $('githubKey').value='';$('authDialog').close();updateStatus();render();toast('Private GitHub library connected.');
+});};
+$('authDialog').addEventListener('close',()=>{$('githubKey').value='';});
+// Clear the old offline application cache without touching any user library.
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}

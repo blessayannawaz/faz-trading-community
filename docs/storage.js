@@ -1,7 +1,5 @@
 'use strict';
-// All data stays in the directory selected through the browser folder picker.
 class LibraryStore {
-  constructor(root) { this.root = root; this.raw = null; this.data = null; }
   static valid(data) {
     const str = x => typeof x === 'string';
     const id = x => str(x) && /^[a-zA-Z0-9_-]{1,100}$/.test(x);
@@ -19,43 +17,65 @@ class LibraryStore {
     }
     return data;
   }
-  async text(name) {
-    try { return await (await (await this.root.getFileHandle(name)).getFile()).text(); }
-    catch (e) { if (e.name === 'NotFoundError') return null; throw e; }
+  constructor(token, repo='blessayannawaz/faz-trading-library-data') {
+    this.token=token;this.repo=repo;this.root={name:repo};this.data=null;this.head=null;this.branch='main';this.baseTree=null;
   }
-  async open() {
-    this.raw = await this.text('library.json');
-    this.data = this.raw === null ? {format:'faz-library',schema:1,revision:0,projects:[]} : LibraryStore.valid(JSON.parse(this.raw));
-    return this.data;
+  async api(path,method='GET',body,raw=false,missing=false) {
+    let response;
+    try { response=await fetch('https://api.github.com/repos/'+this.repo+path,{
+      method,cache:'no-store',credentials:'omit',redirect:'error',
+      headers:{Authorization:'Bearer '+this.token,Accept:raw?'application/vnd.github.raw+json':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},
+      ...(body?{body:JSON.stringify(body)}:{})
+    }); } catch { throw Error('GitHub could not be reached. Check your internet connection, then reconnect before retrying a save.'); }
+    if(missing&&response.status===404)return null;
+    if(!response.ok){
+      if(response.status===401)throw Error('Your GitHub access key expired or is invalid. Connect again with a valid key.');
+      if(response.status===403||response.status===429)throw Error('GitHub refused access or its request limit was reached. Check Contents read/write permission or try again later.');
+      if(response.status===404)throw Error('Private library not accessible. Give your key access to faz-trading-library-data.');
+      if(response.status===409||response.status===422)throw Error('The GitHub library changed or could not be updated. Click Refresh library before retrying.');
+      throw Error('GitHub request failed ('+response.status+'). Your saved library has not been replaced.');
+    }
+    return raw?response.blob():response.json();
   }
-  async file(path) {
-    const parts = path.split('/');
-    if (parts.some(s => !s || s === '.' || s === '..' || /[\\:]/.test(s))) throw Error('Invalid file path.');
-    let dir = this.root;
-    for (const part of parts.slice(0,-1)) dir = await dir.getDirectoryHandle(part);
-    return (await dir.getFileHandle(parts.at(-1))).getFile();
+  async open(){
+    const repo=await this.api('');
+    if(!repo.private)throw Error('This library must be private. Make the data repository private before connecting.');
+    if(!repo.permissions?.push)throw Error('Write access to the data repository is required.');
+    this.branch=repo.default_branch;
+    const ref=await this.api('/git/ref/heads/'+encodeURIComponent(this.branch));
+    const head=ref.object.sha,commit=await this.api('/git/commits/'+head);
+    const blob=await this.api('/contents/library.json?ref='+head,'GET',undefined,true,true);
+    const raw=blob?await blob.text():null;
+    const data=raw===null?{format:'faz-library',schema:1,revision:0,projects:[]}:LibraryStore.valid(JSON.parse(raw));
+    this.head=head;this.baseTree=commit.tree.sha;this.raw=raw;this.data=data;return data;
   }
-  async write(path, content) {
-    const parts = path.split('/'); let dir = this.root;
-    for (const part of parts.slice(0,-1)) dir = await dir.getDirectoryHandle(part,{create:true});
-    const handle = await dir.getFileHandle(parts.at(-1),{create:true});
-    const stream = await handle.createWritable();
-    try { await stream.write(content); await stream.close(); }
-    catch(e) { try { await stream.abort(); } catch {} throw e; }
+  async file(path){
+    if(path.split('/').some(p=>!p||p==='.'||p==='..'||/[\\:]/.test(p)))throw Error('Invalid library file path.');
+    const file=await this.api('/contents/'+path.split('/').map(encodeURIComponent).join('/')+'?ref='+this.head,'GET',undefined,true);
+    const ext=path.split('.').at(-1),type={png:'image/png',jpg:'image/jpeg',webp:'image/webp',pine:'text/plain'}[ext]||'application/octet-stream';
+    return new Blob([file],{type});
   }
-  async commit(next, assets = []) {
+  async commit(next,assets=[]){
     LibraryStore.valid(next);
-    if (await this.text('library.json') !== this.raw) throw Error('This folder was changed elsewhere. Reconnect the folder to reload before saving.');
-    // Write new, uniquely named assets before committing metadata. Failed saves
-    // may leave unused assets, but never replace a previous version's files.
-    for (const asset of assets) await this.write(asset.path, asset.content);
-    if (await this.text('library.json') !== this.raw) throw Error('This folder was changed elsewhere. Reconnect before saving.');
-    if (this.raw !== null) await this.write('library.backup.json',this.raw);
-    next.revision = this.data.revision + 1;
-    const raw = JSON.stringify(next,null,2);
-    await this.write('library.json',raw);
-    this.raw = raw; this.data = next;
-    return next;
+    const ref=await this.api('/git/ref/heads/'+encodeURIComponent(this.branch));
+    if(ref.object.sha!==this.head)throw Error('Another session changed your GitHub library. Click Refresh library before saving.');
+    const tree=[];
+    for(const asset of assets){
+      const blob=asset.content instanceof Blob?asset.content:new Blob([asset.content]);
+      const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';
+      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      const saved=await this.api('/git/blobs','POST',{content:btoa(binary),encoding:'base64'});
+      tree.push({path:asset.path,mode:'100644',type:'blob',sha:saved.sha});
+    }
+    const updated=structuredClone(next);updated.revision=this.data.revision+1;
+    const raw=JSON.stringify(updated,null,2);
+    tree.push({path:'library.json',mode:'100644',type:'blob',content:raw});
+    const nextTree=await this.api('/git/trees','POST',{base_tree:this.baseTree,tree});
+    const commit=await this.api('/git/commits','POST',{message:'FAZ library: save revision '+updated.revision,tree:nextTree.sha,parents:[this.head]});
+    // Non-forced updates reject concurrent changes. Files and catalogue become
+    // visible together; failed uploads never partially replace a saved version.
+    await this.api('/git/refs/heads/'+encodeURIComponent(this.branch),'PATCH',{sha:commit.sha,force:false});
+    this.head=commit.sha;this.baseTree=nextTree.sha;this.raw=raw;this.data=updated;return updated;
   }
 }
-if (typeof module !== 'undefined') module.exports = LibraryStore;
+if(typeof module!=='undefined')module.exports=LibraryStore;
